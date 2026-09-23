@@ -3,10 +3,17 @@
 
   const SERVICE_UUID = "c4a00001-8e22-4c04-a001-528400000001";
   const DATA_UUID = "c4a00002-8e22-4c04-a001-528400000001";
-  const PROTOCOL_VERSION = 3;
+  const PROTOCOL_VERSION = 4;
   const SAMPLE_SIZE = 56;
   const NOTIFICATION_SIZE = 112;
   const SAMPLE_RATE_HZ = 50;
+
+  function batteryPercent(millivolts) {
+    if (millivolts <= 3300) return 0;
+    if (millivolts < 3600) return Math.round((millivolts - 3300) / 30);
+    if (millivolts < 4200) return Math.round(10 + (millivolts - 3600) * 0.15);
+    return 100;
+  }
 
   function asDataView(value) {
     if (value instanceof DataView) return value;
@@ -20,7 +27,8 @@
   function decodeSample(view, offset, expectedSide) {
     const version = view.getUint8(offset);
     const side = view.getUint8(offset + 1);
-    const rate = view.getUint16(offset + 2, true);
+    const rate = view.getUint8(offset + 2);
+    const batteryCode = view.getUint8(offset + 3);
     if (version !== PROTOCOL_VERSION) {
       throw new Error(`协议版本为 ${version}，网页需要版本 ${PROTOCOL_VERSION}`);
     }
@@ -33,10 +41,14 @@
       if (!Number.isFinite(value)) throw new Error("数据包包含无效浮点数");
       values.push(value);
     }
+    const batteryMv = batteryCode === 0xff ? null : 3000 + batteryCode * 5;
     return {
       version,
       side,
       rate,
+      battery_code: batteryCode,
+      battery_mv: batteryMv,
+      battery_percent: batteryMv === null ? null : batteryPercent(batteryMv),
       frame: view.getUint32(offset + 4, true),
       adc_us: view.getUint32(offset + 8, true),
       imu_us: view.getUint32(offset + 12, true),
@@ -69,6 +81,7 @@
     SAMPLE_SIZE,
     NOTIFICATION_SIZE,
     SAMPLE_RATE_HZ,
+    batteryPercent,
     decodeNotification,
     signedDelta,
   };

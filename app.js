@@ -75,7 +75,7 @@ function makeShoeLiveMarkup(side) {
         <div class="summary-item"><span>Sampling Rate</span><strong id="rate-${side}">—</strong></div>
         <div class="summary-item"><span>BLE Status</span><strong id="ble-${side}">Disconnected</strong></div>
         <div class="summary-item"><span>Frame</span><strong id="frame-${side}">—</strong></div>
-        <div class="summary-item"><span>Battery</span><strong>未提供</strong></div>
+        <div class="summary-item"><span>Battery</span><strong id="battery-${side}">—</strong></div>
         <div class="summary-item"><span>Average Rate</span><strong id="average-${side}">—</strong></div>
         <div class="summary-item"><span>Last Data</span><strong id="age-${side}">—</strong></div>
         <div class="summary-item"><span>Received</span><strong id="count-${side}">0</strong></div>
@@ -344,6 +344,9 @@ function refreshShoe(shoe) {
   $("chart-status-" + side).textContent = live ? "LIVE · 50 Hz" : statusText(shoe.status);
   $("ble-" + side).textContent = shoe.device && shoe.device.gatt && shoe.device.gatt.connected ? "Connected" : "Disconnected";
   $("frame-" + side).textContent = last ? String(last.frame) : "—";
+  $("battery-" + side).textContent = !last || last.battery_mv === null
+    ? "—"
+    : `${last.battery_percent}% · ${(last.battery_mv / 1000).toFixed(3)} V`;
   const currentRate = receiveRate(shoe);
   $("rate-" + side).textContent = currentRate === null ? "—" : `${currentRate.toFixed(1)} Hz`;
   const elapsed = shoe.firstReceivedMs === null || shoe.lastReceivedMs === null ? 0 : (shoe.lastReceivedMs - shoe.firstReceivedMs) / 1000;
@@ -499,7 +502,7 @@ class CsvRecorder {
     const row = [
       this.session, sample.side === 0 ? "L" : "R", sample.frame, sample.received_time_iso,
       sample.received_unix_ns, sample.received_monotonic_ns, sample.received_s, sample.plot_s,
-      sample.adc_us, sample.imu_us,
+      sample.adc_us, sample.imu_us, sample.battery_mv ?? "", sample.battery_percent ?? "",
       ...sample.voltage, ...sample.acceleration, ...sample.angular_rate,
     ].join(",") + "\n";
     this.pending.push(row);
@@ -545,7 +548,7 @@ class CsvRecorder {
       request.onsuccess = () => resolve(request.result.sort((a, b) => a.index - b.index));
       request.onerror = () => reject(request.error || new Error("读取记录失败"));
     });
-    const header = "session,shoe,frame,received_time_iso,received_unix_ns,received_monotonic_ns,received_s,plot_s,adc_us,imu_us,voltage_0,voltage_1,voltage_2,voltage_3,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n";
+    const header = "session,shoe,frame,received_time_iso,received_unix_ns,received_monotonic_ns,received_s,plot_s,adc_us,imu_us,battery_mv,battery_percent,voltage_0,voltage_1,voltage_2,voltage_3,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n";
     const parts = ["\ufeff", header, ...chunks.map(chunk => chunk.text)];
     const fileName = this.session + ".csv";
     const blob = new Blob(parts, {type: "text/csv;charset=utf-8"});
