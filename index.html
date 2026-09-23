@@ -3,67 +3,100 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3f6f8">
-  <title>GAIT iPhone 蓝牙采集</title>
-  <link rel="stylesheet" href="./style.css?v=2">
+  <meta name="theme-color" content="#f7f8fa">
+  <title>GAIT 科研数据采集平台</title>
+  <link rel="stylesheet" href="./style.css?v=3">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">G</span>
-      <div><strong>GAIT / MOBILE</strong><small>双鞋 BLE 实时采集</small></div>
+  <header class="app-header">
+    <div class="product">
+      <span class="product-mark">G</span>
+      <div><strong>GAIT RESEARCH</strong><small>Sensor Acquisition Platform</small></div>
     </div>
-    <span class="browser-state" id="browser-state">检查蓝牙能力…</span>
+    <div class="experiment-name">
+      <span>当前实验</span>
+      <strong>双鞋步态传感与 IMU 采集</strong>
+    </div>
+    <div class="header-status">
+      <div><span class="status-dot neutral" id="top-connection-dot"></span><small>设备</small><strong id="top-connection">0 / 2</strong></div>
+      <div><span class="status-dot neutral" id="top-sampling-dot"></span><small>采样</small><strong id="top-sampling">等待</strong></div>
+      <div><span class="status-dot neutral" id="top-recording-dot"></span><small>保存</small><strong id="top-recording">未记录</strong></div>
+    </div>
   </header>
 
-  <main>
-    <section class="intro">
-      <div>
-        <div class="eyebrow">XIAO nRF52840 SENSE · ADS122C04</div>
-        <h1>由 iPhone 直接接收两只鞋的数据</h1>
-        <p>请使用 Bluefy 打开本页面。首次连接时，左右鞋需要分别在系统设备列表中选择一次。</p>
+  <main class="dashboard">
+    <div class="notice" id="notice" role="status">请给两只鞋上电，并分别选择 GAIT-L 与 GAIT-R。</div>
+
+    <aside class="left-rail">
+      <section class="panel device-panel">
+        <div class="panel-heading"><div><span class="section-index">01</span><h2>设备连接</h2></div><span class="browser-state" id="browser-state">检查蓝牙…</span></div>
+        <article class="device-row" id="connection-0">
+          <div class="device-identity"><span class="side-letter left">L</span><div><strong>左鞋</strong><small>GAIT-L</small></div></div>
+          <span class="badge" id="badge-0">未连接</span>
+          <div class="device-actions"><button id="connect-0">选择并连接</button><button id="disconnect-0" class="secondary" disabled>断开</button></div>
+        </article>
+        <article class="device-row" id="connection-1">
+          <div class="device-identity"><span class="side-letter right">R</span><div><strong>右鞋</strong><small>GAIT-R</small></div></div>
+          <span class="badge" id="badge-1">未连接</span>
+          <div class="device-actions"><button id="connect-1">选择并连接</button><button id="disconnect-1" class="secondary" disabled>断开</button></div>
+        </article>
+      </section>
+
+      <section class="panel channel-panel">
+        <div class="panel-heading"><div><span class="section-index">02</span><h2>传感器通道</h2></div></div>
+        <div class="channel-group"><strong>ADS122C04</strong><small>单端电压 · 4 Channel</small></div>
+        <ul class="channel-list">
+          <li><span class="channel-color c0"></span><b>CH0</b><span>RS0</span><em>V</em></li>
+          <li><span class="channel-color c1"></span><b>CH1</b><span>RS1</span><em>V</em></li>
+          <li><span class="channel-color c2"></span><b>CH2</b><span>RS2</span><em>V</em></li>
+          <li><span class="channel-color c3"></span><b>CH3</b><span>RS3</span><em>V</em></li>
+        </ul>
+        <div class="channel-group imu"><strong>LSM6DS3</strong><small>加速度 + 角速度 · 6 Axis</small></div>
+      </section>
+
+      <section class="panel config-panel">
+        <div class="panel-heading"><div><span class="section-index">03</span><h2>实验配置</h2></div></div>
+        <dl class="config-list">
+          <div><dt>目标采样率</dt><dd>50 Hz / 鞋</dd></div>
+          <div><dt>通知频率</dt><dd>25 Hz / 鞋</dd></div>
+          <div><dt>通知负载</dt><dd>112 Byte</dd></div>
+          <div><dt>曲线窗口</dt><dd>10 s</dd></div>
+          <div><dt>当前试次</dt><dd>未设置</dd></div>
+        </dl>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-heading">
+        <div><span class="section-index">REAL-TIME SIGNALS</span><h1>实时曲线</h1></div>
+        <div class="sampling-spec"><span>ADC</span><b>4 CH</b><span>IMU</span><b>6 AXIS</b><span>RATE</span><b>50 Hz</b></div>
       </div>
-      <div class="window-label"><strong>10<span>s</span></strong><small>实时曲线窗口</small></div>
+      <div class="chart-area" id="chart-area"></div>
     </section>
 
-    <section class="connections" aria-label="蓝牙连接控制">
-      <article class="connection-card" id="connection-0">
-        <div><span class="side-letter left">L</span><strong>左鞋</strong><small>GAIT-L</small></div>
-        <span class="badge" id="badge-0">未连接</span>
-        <button id="connect-0">选择并连接</button>
-        <button id="disconnect-0" class="secondary" disabled>断开</button>
-      </article>
-      <article class="connection-card" id="connection-1">
-        <div><span class="side-letter right">R</span><strong>右鞋</strong><small>GAIT-R</small></div>
-        <span class="badge" id="badge-1">未连接</span>
-        <button id="connect-1">选择并连接</button>
-        <button id="disconnect-1" class="secondary" disabled>断开</button>
-      </article>
-    </section>
-
-    <section class="recording" aria-label="数据保存控制">
-      <div class="recording-copy">
-        <span class="record-dot" id="record-dot"></span>
-        <div><strong id="record-title">尚未开始记录</strong><small id="record-detail">连接鞋子后可记录并导出一个双鞋 CSV 文件</small></div>
-      </div>
-      <div class="record-actions">
-        <button id="record-start" disabled>开始记录</button>
-        <button id="record-stop" class="secondary" disabled>停止并生成CSV</button>
-        <button id="record-save" class="button-link" hidden>保存/分享CSV</button>
-      </div>
-    </section>
-
-    <div class="notice" id="notice" role="status">请先给两只鞋上电，然后分别点击“选择并连接”。</div>
-    <section class="shoe-grid" id="shoe-grid" aria-label="左右鞋实时数据"></section>
-
-    <footer>
-      <span>采样仍为每鞋 50 Hz；固件每两个样本合并成一次 112 字节通知。</span>
-      <span>曲线只连接现有样本，不生成或补写缺失数据。</span>
-    </footer>
+    <aside class="right-rail">
+      <div class="right-heading"><span class="section-index">LIVE VALUES</span><h2>实时数值</h2></div>
+      <div id="live-panels"></div>
+      <section class="session-panel">
+        <div><span>Recording Time</span><strong id="recording-time">00:00</strong></div>
+        <div><span>Current Trial</span><strong>未设置</strong></div>
+      </section>
+    </aside>
   </main>
-  
 
-  <script src="./protocol.js?v=2"></script>
-  <script src="./app.js?v=2"></script>
+  <footer class="control-dock">
+    <div class="recording-copy">
+      <span class="record-dot" id="record-dot"></span>
+      <div><strong id="record-title">尚未开始记录</strong><small id="record-detail">连接设备后可开始记录双鞋数据</small></div>
+    </div>
+    <div class="record-actions">
+      <button id="record-start" disabled>开始记录</button>
+      <button id="record-stop" class="danger" disabled>停止并生成 CSV</button>
+      <button id="record-save" class="save" hidden>保存 / 导出</button>
+    </div>
+  </footer>
+
+  <script src="./protocol.js?v=3"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>

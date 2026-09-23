@@ -1,7 +1,7 @@
 "use strict";
 
 const protocol = window.GaitProtocol;
-const colors = ["#147f80", "#447dde", "#df9130", "#b95d91"];
+const colors = ["#3f6f91", "#4b8b82", "#c2843d", "#9a6378"];
 const historyLimit = 1000;
 const reconnectDelayMs = 1800;
 const groups = [
@@ -46,37 +46,55 @@ function notice(message, error = false) {
   $("notice").classList.toggle("error", error);
 }
 
-function makeShoeMarkup(side) {
+function makeShoeChartMarkup(side) {
   const label = side === 0 ? "左鞋" : "右鞋";
   return `
-    <article class="shoe stale" id="shoe-${side}">
-      <section class="shoe-summary">
-        <div class="shoe-heading"><h2>${label}<span>GAIT-${side === 0 ? "L" : "R"}</span></h2><span class="badge" id="stream-badge-${side}">无数据</span></div>
-        <div class="metrics">
-          <div class="metric"><span>最新帧号</span><strong id="frame-${side}">—</strong></div>
-          <div class="metric"><span>近2秒接收率</span><strong id="rate-${side}">—</strong></div>
-          <div class="metric"><span>累计平均</span><strong id="average-${side}">—</strong></div>
-          <div class="metric"><span>累计接收</span><strong id="count-${side}">0</strong></div>
-          <div class="metric"><span>缺帧 / 缺帧率</span><strong><span id="missing-${side}">0</span> / <span id="loss-${side}">0.000%</span></strong></div>
-          <div class="metric"><span>最近数据</span><strong id="age-${side}">—</strong></div>
-        </div>
-        <div class="device-error" id="error-${side}" hidden></div>
-      </section>
+    <article class="shoe-chart-block stale" id="chart-shoe-${side}">
+      <div class="shoe-chart-heading">
+        <div class="shoe-chart-title"><span class="side-letter ${side === 0 ? "left" : "right"}">${side === 0 ? "L" : "R"}</span><strong>${label}</strong><small>GAIT-${side === 0 ? "L" : "R"}</small></div>
+        <span class="shoe-chart-status" id="chart-status-${side}">等待连接</span>
+      </div>
       ${groups.map(group => `
-        <section class="card">
-          <div class="card-top"><h3>${group.title}</h3><span class="unit">${group.unit}</span></div>
-          <div class="values ${group.channels.length === 4 ? "four" : ""}">
-            ${group.channels.map((channel, index) => `
-              <div><div class="reading-label"><span class="swatch" style="--series:${colors[index]}"></span>${channel}</div><div class="reading-value" id="value-${side}-${group.key}-${index}">—</div></div>
-            `).join("")}
-          </div>
+        <section class="chart-card">
+          <div class="chart-card-header"><h3>${group.title} <span class="unit">${group.unit}</span></h3><div class="chart-legend">${group.channels.map((channel, index) => `<span class="legend-item"><i class="legend-line" style="--series:${colors[index]}"></i>${channel}</span>`).join("")}</div></div>
           <canvas class="plot" id="plot-${side}-${group.key}" aria-label="${label}${group.title}最近10秒曲线"></canvas>
         </section>
       `).join("")}
     </article>`;
 }
 
-$("shoe-grid").innerHTML = makeShoeMarkup(0) + makeShoeMarkup(1);
+function makeShoeLiveMarkup(side) {
+  const label = side === 0 ? "左鞋" : "右鞋";
+  return `
+    <article class="live-panel stale" id="shoe-${side}">
+      <div class="live-heading">
+        <div><span class="side-letter ${side === 0 ? "left" : "right"}">${side === 0 ? "L" : "R"}</span><div><strong>${label}</strong><small>GAIT-${side === 0 ? "L" : "R"}</small></div></div>
+        <span class="badge" id="stream-badge-${side}">无数据</span>
+      </div>
+      <div class="live-summary">
+        <div class="summary-item"><span>Sampling Rate</span><strong id="rate-${side}">—</strong></div>
+        <div class="summary-item"><span>BLE Status</span><strong id="ble-${side}">Disconnected</strong></div>
+        <div class="summary-item"><span>Frame</span><strong id="frame-${side}">—</strong></div>
+        <div class="summary-item"><span>Battery</span><strong>未提供</strong></div>
+        <div class="summary-item"><span>Average Rate</span><strong id="average-${side}">—</strong></div>
+        <div class="summary-item"><span>Last Data</span><strong id="age-${side}">—</strong></div>
+        <div class="summary-item"><span>Received</span><strong id="count-${side}">0</strong></div>
+        <div class="summary-item"><span>Missing / Loss</span><strong><span id="missing-${side}">0</span> / <span id="loss-${side}">0.000%</span></strong></div>
+      </div>
+      ${groups.map(group => `
+        <section class="live-group">
+          <div class="live-group-title"><strong>${group.title}</strong><span>${group.unit}</span></div>
+          <div class="live-values ${group.channels.length === 4 ? "four" : ""}">
+            ${group.channels.map((channel, index) => `<div class="reading"><div class="reading-label"><span class="swatch" style="--series:${colors[index]}"></span>${channel}</div><div class="reading-value" id="value-${side}-${group.key}-${index}">—</div></div>`).join("")}
+          </div>
+        </section>
+      `).join("")}
+      <div class="device-error" id="error-${side}" hidden></div>
+    </article>`;
+}
+
+$("chart-area").innerHTML = makeShoeChartMarkup(0) + makeShoeChartMarkup(1);
+$("live-panels").innerHTML = makeShoeLiveMarkup(0) + makeShoeLiveMarkup(1);
 
 function statusText(status) {
   return {
@@ -88,6 +106,17 @@ function statusText(status) {
     reconnecting: "重新连接中",
     error: "连接失败",
   }[status] || status;
+}
+
+function refreshHeaderStatus() {
+  const connected = shoes.filter(shoe => Boolean(shoe.device && shoe.device.gatt && shoe.device.gatt.connected)).length;
+  const streaming = shoes.filter(shoe => shoe.status === "streaming").length;
+  $("top-connection").textContent = `${connected} / 2`;
+  $("top-connection-dot").className = "status-dot " + (connected === 2 ? "success" : connected === 1 ? "warning" : "neutral");
+  $("top-sampling").textContent = streaming === 2 ? "50 Hz" : streaming === 1 ? "单侧" : "等待";
+  $("top-sampling-dot").className = "status-dot " + (streaming === 2 ? "success" : streaming === 1 ? "warning" : "neutral");
+  $("top-recording").textContent = recorder.error ? "异常" : recorder.active ? "记录中" : recorder.file ? "待导出" : "未记录";
+  $("top-recording-dot").className = "status-dot " + (recorder.error ? "error" : recorder.active ? "success" : recorder.file ? "warning" : "neutral");
 }
 
 function refreshControls() {
@@ -103,6 +132,7 @@ function refreshControls() {
   });
   $("record-start").disabled = recorder.active || !shoes.some(shoe => shoe.status === "streaming");
   $("record-stop").disabled = !recorder.active;
+  refreshHeaderStatus();
 }
 
 function bluetoothErrorMessage(error) {
@@ -303,6 +333,7 @@ function refreshShoe(shoe) {
   const live = shoe.status === "streaming" && shoe.lastReceivedMs !== null && performance.now() - shoe.lastReceivedMs < 1000;
   const waitingTooLong = shoe.status === "waiting" && shoe.connectedAtMs !== null && performance.now() - shoe.connectedAtMs > 4000;
   $("shoe-" + side).classList.toggle("stale", !live);
+  $("chart-shoe-" + side).classList.toggle("stale", !live);
   const streamBadge = $("stream-badge-" + side);
   streamBadge.textContent = live ? "实时" : shoe.status === "waiting" ? "等待通知" : "无新数据";
   streamBadge.className = "badge" + (live ? " live" : shoe.error || waitingTooLong ? " problem" : "");
@@ -310,6 +341,8 @@ function refreshShoe(shoe) {
   const displayError = shoe.error || (waitingTooLong ? "已经订阅但尚未收到数据；当前固件要求ATT MTU至少115，请同时查看鞋端串口诊断。" : "");
   error.textContent = displayError;
   error.hidden = !displayError;
+  $("chart-status-" + side).textContent = live ? "LIVE · 50 Hz" : statusText(shoe.status);
+  $("ble-" + side).textContent = shoe.device && shoe.device.gatt && shoe.device.gatt.connected ? "Connected" : "Disconnected";
   $("frame-" + side).textContent = last ? String(last.frame) : "—";
   const currentRate = receiveRate(shoe);
   $("rate-" + side).textContent = currentRate === null ? "—" : `${currentRate.toFixed(1)} Hz`;
@@ -358,7 +391,7 @@ function drawPlot(shoe, group) {
   for (let index = 0; index <= 3; index += 1) {
     const value = min + (max - min) * index / 3;
     const py = y(value);
-    context.strokeStyle = "#edf1f4";
+    context.strokeStyle = "#eef1f3";
     context.lineWidth = 1;
     context.beginPath(); context.moveTo(left, py); context.lineTo(right, py); context.stroke();
     context.textAlign = "right";
@@ -381,7 +414,7 @@ function drawPlot(shoe, group) {
   group.channels.forEach((_, channel) => {
     context.beginPath();
     context.strokeStyle = colors[channel];
-    context.lineWidth = 2.8;
+    context.lineWidth = 1.7;
     context.lineCap = "round";
     context.lineJoin = "round";
     let previous = null;
@@ -416,6 +449,8 @@ class CsvRecorder {
     this.dbPromise = null;
     this.downloadUrl = "";
     this.file = null;
+    this.startedAtMs = null;
+    this.elapsedMs = 0;
   }
 
   openDatabase() {
@@ -446,6 +481,8 @@ class CsvRecorder {
     if (this.downloadUrl) URL.revokeObjectURL(this.downloadUrl);
     this.downloadUrl = "";
     this.file = null;
+    this.startedAtMs = performance.now();
+    this.elapsedMs = 0;
     this.active = true;
     this.rows = 0;
     this.error = "";
@@ -497,6 +534,7 @@ class CsvRecorder {
   async stop() {
     if (!this.active) return;
     this.active = false;
+    this.elapsedMs = this.startedAtMs === null ? 0 : performance.now() - this.startedAtMs;
     this.flush();
     await this.writeChain;
     if (this.error) throw new Error(this.error);
@@ -564,6 +602,10 @@ function updateRecordingUi() {
     $("record-title").textContent = "尚未开始记录";
     $("record-detail").textContent = "连接鞋子后可记录并导出一个双鞋CSV文件";
   }
+  const elapsedMs = recorder.active && recorder.startedAtMs !== null
+    ? performance.now() - recorder.startedAtMs : recorder.elapsedMs;
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  $("recording-time").textContent = `${String(Math.floor(totalSeconds / 60)).padStart(2, "0")}:${String(totalSeconds % 60).padStart(2, "0")}`;
   refreshControls();
 }
 
