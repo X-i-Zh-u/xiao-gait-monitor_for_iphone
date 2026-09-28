@@ -71,6 +71,16 @@
         <div><span class="section-index">REAL-TIME SIGNALS</span><h1>实时曲线</h1></div>
         <div class="sampling-spec"><span>ADC</span><b>4 CH</b><span>IMU</span><b>6 AXIS</b><span>RATE</span><b>50 Hz</b></div>
       </div>
+      <section class="trajectory-panel" aria-label="二维步行轨迹">
+        <div class="trajectory-heading"><div><span class="section-index">IMU DEAD RECKONING</span><h2>二维行走轨迹</h2></div><span class="trajectory-state" id="trajectory-state">等待传感器数据</span></div>
+        <div class="trajectory-controls">
+          <label>轨迹来源<select id="trajectory-side"><option value="0">左鞋 · GAIT-L</option><option value="1">右鞋 · GAIT-R</option></select></label>
+          <label>步长校准 <span><input id="step-length" type="number" min="20" max="150" step="1" value="65"> cm</span></label>
+          <button id="trajectory-start" disabled>开始</button><button id="trajectory-pause" class="secondary" disabled>暂停</button><button id="trajectory-clear" class="secondary">清空</button><button id="trajectory-calibrate" class="secondary" disabled>校准前进方向</button>
+        </div>
+        <canvas id="trajectory-canvas" class="trajectory-canvas" role="img" aria-label="俯视二维行走路径"></canvas>
+        <div class="trajectory-meta"><span>步数 <b id="trajectory-steps">0</b></span><span>估计距离 <b id="trajectory-distance">0.00 m</b></span><span>朝向 <b id="trajectory-heading-value">0°</b></span><small>IMU 步态估计；朝向与距离会随时间漂移</small></div>
+      </section>
       <div class="chart-area" id="chart-area"></div>
     </section>
 
@@ -97,6 +107,7 @@
   </footer>
 
   <script src="./protocol.js?v=4"></script>
-  <script src="./app.js?v=4"></script>
+  <script src="./trajectory.js?v=1"></script>
+  <script src="./app.js?v=5"></script>
 </body>
 </html>

@@ -12,6 +12,8 @@ const groups = [
 
 const $ = id => document.getElementById(id);
 let receiveOriginMs = null;
+const trajectories = [GaitTrajectory.create(), GaitTrajectory.create()];
+let trajectorySide = 0;
 
 function newShoe(side) {
   return {
@@ -304,6 +306,9 @@ function receiveNotification(shoe, event) {
     sample.received_unix_ns = unixNs;
     sample.received_time_iso = new Date(receivedUnixMs).toISOString();
     sample.plot_s = shoe.plotOriginS + protocol.signedDelta(sample.frame, shoe.plotOriginFrame) / protocol.SAMPLE_RATE_HZ;
+    const trajectory = trajectories[shoe.side];
+    trajectory.stepLength = Math.max(0.2, Math.min(1.5, Number($("step-length").value || 65) / 100));
+    GaitTrajectory.process(trajectory, sample, trajectory.active);
     shoe.history.push(sample);
     if (shoe.history.length > historyLimit) shoe.history.shift();
     shoe.receivedCount += 1;
@@ -437,8 +442,46 @@ function render() {
     refreshShoe(shoe);
     groups.forEach(group => drawPlot(shoe, group));
   });
+  drawTrajectory();
   updateRecordingUi();
 }
+
+function drawTrajectory() {
+  const state = trajectories[trajectorySide], canvas = $("trajectory-canvas");
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const ratio = window.devicePixelRatio || 1, width = bounds.width, height = bounds.height;
+  const pw = Math.round(width * ratio), ph = Math.round(height * ratio);
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+  const c = canvas.getContext("2d"); c.setTransform(ratio,0,0,ratio,0,0); c.clearRect(0,0,width,height);
+  c.fillStyle = "#fbfcfd"; c.fillRect(0,0,width,height);
+  const extent = Math.max(0, ...state.path.flatMap(p => [Math.abs(p.x),Math.abs(p.y)]));
+  const span = Math.max(4, extent * 2.4);
+  const scale = Math.min((width-50)/span,(height-38)/span), ox=width/2, oy=height/2;
+  const px=x=>ox+x*scale, py=y=>oy-y*scale;
+  c.strokeStyle="#e9eef1"; c.lineWidth=1;
+  for(let x=ox%scale;x<width;x+=scale)c.strokeRect(x,0,0.1,height);
+  for(let y=oy%scale;y<height;y+=scale)c.strokeRect(0,y,width,0.1);
+  c.strokeStyle="#d9e1e6";c.beginPath();c.moveTo(ox-7,oy);c.lineTo(ox+7,oy);c.moveTo(ox,oy-7);c.lineTo(ox,oy+7);c.stroke();
+  if(state.path.length>1){c.beginPath();state.path.forEach((p,i)=>i?c.lineTo(px(p.x),py(p.y)):c.moveTo(px(p.x),py(p.y)));c.strokeStyle="#248783";c.lineWidth=3;c.lineJoin="round";c.lineCap="round";c.stroke();}
+  c.fillStyle="#248783";c.beginPath();c.arc(px(state.x),py(state.y),6,0,Math.PI*2);c.fill();
+  const direction=GaitTrajectory.yaw(state.q)-state.headingZero, tipX=px(state.x+Math.sin(direction)*.45),tipY=py(state.y+Math.cos(direction)*.45);
+  c.strokeStyle="#d4773b";c.fillStyle="#d4773b";c.lineWidth=2.5;c.beginPath();c.moveTo(px(state.x),py(state.y));c.lineTo(tipX,tipY);c.stroke();
+  c.beginPath();c.moveTo(tipX,tipY);c.lineTo(tipX-7*Math.cos(direction-.55),tipY-7*Math.sin(direction-.55));c.lineTo(tipX-7*Math.cos(direction+.55),tipY-7*Math.sin(direction+.55));c.closePath();c.fill();
+  $("trajectory-steps").textContent=state.steps;$("trajectory-distance").textContent=`${state.distance.toFixed(2)} m`;
+  $("trajectory-heading-value").textContent=`${((direction*180/Math.PI+360)%360).toFixed(0)}°`;
+  const connected=shoes[trajectorySide].status==="streaming";
+  $("trajectory-state").textContent=state.active?(connected?"轨迹记录中":"等待所选鞋数据"):state.lastFrame===null?"等待传感器数据":"已暂停";
+  $("trajectory-start").disabled=state.active||!connected;$("trajectory-pause").disabled=!state.active;
+  $("trajectory-calibrate").disabled=state.lastFrame===null;
+}
+
+$("trajectory-side").onchange=()=>{trajectorySide=Number($("trajectory-side").value);drawTrajectory();};
+$("step-length").oninput=()=>trajectories.forEach(s=>s.stepLength=Math.max(.2,Math.min(1.5,Number($("step-length").value||65)/100)));
+$("trajectory-start").onclick=()=>{const s=trajectories[trajectorySide];s.active=true;s.olderVertical=s.previousVertical=s.filteredVertical=0;drawTrajectory();};
+$("trajectory-pause").onclick=()=>{trajectories[trajectorySide].active=false;drawTrajectory();};
+$("trajectory-clear").onclick=()=>{for(const s of trajectories){const active=s.active;Object.assign(s,GaitTrajectory.create());s.active=active;}drawTrajectory();};
+$("trajectory-calibrate").onclick=()=>{const s=trajectories[trajectorySide];s.headingZero=GaitTrajectory.yaw(s.q);notice("前进方向已校准。请保持鞋尖朝向期望的轨迹前方。 ");drawTrajectory();};
 
 class CsvRecorder {
   constructor() {
