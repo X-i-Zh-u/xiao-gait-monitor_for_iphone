@@ -1,3 +1,5 @@
+// Legacy fixed-4-km/h implementation retained only for historical comparison.
+// index.html now loads lm_turn_model.js + lm_turn_speed.js instead of this file.
 (function (root) {
   "use strict";
 

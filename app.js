@@ -476,19 +476,26 @@ function drawTurn() {
     const badge = $("turn-state-" + side);
     badge.textContent = state;
     badge.className = "turn-badge" + (turnEnabled && live && ready && !stale ? ` ${result.state.toLowerCase()}` : "");
-    const showResult = turnEnabled && live && ready && !stale && result.score !== null;
+    const showCycle = turnEnabled && live && ready && !stale && Number.isFinite(result.imuSpeedProxyKmh);
+    const showResult = showCycle && result.score !== null;
+    $("turn-probability-" + side).textContent = showResult && Number.isFinite(result.turnProbability)
+      ? `${(100 * result.turnProbability).toFixed(1)}%` : "—";
+    $("turn-speed-" + side).textContent = showCycle ? `${result.imuSpeedProxyKmh.toFixed(2)} km/h` : "—";
     $("turn-score-" + side).textContent = showResult ? `${result.score.toFixed(2)}%` : "—";
     $("turn-onset-" + side).textContent = showResult ? `${result.onsetScore.toFixed(2)}%` : "—";
     $("turn-peak-" + side).textContent = showResult ? `${result.peakScore.toFixed(2)}%` : "—";
     $("turn-channels-" + side).textContent = turnEnabled && live && ready && !stale && result.validChannels !== null ? `${result.validChannels}/4` : "—";
     $("turn-cycles-" + side).textContent = String(detector.cycleCount);
+    const qualityWarnings = [];
+    if (result.speedProxyExtrapolated) qualityWarnings.push("步速超出 2–4 km/h 标定范围");
+    if (result.speedProxyOutOfDistribution) qualityWarnings.push("IMU 步态偏离训练分布");
     $("turn-detail-" + side).textContent = !turnEnabled ? "点击按钮开始检测" : !live ? "连接并接收该鞋数据后继续" : !ready
       ? "请保持这只鞋静止约 0.4 秒" : stale ? "尚无近期完整周期；继续行走" : result.reason ||
-      `候选周期 ${result.duration.toFixed(2)} 秒；${result.returnMissingCount ? `${result.returnMissingCount} 路未检测到恢复` : "四路恢复状态正常"}`;
+      `候选周期 ${result.duration.toFixed(2)} 秒；模板 ${result.templateSpeedKmh.toFixed(2)} km/h；${qualityWarnings.length ? qualityWarnings.join("；") : result.returnMissingCount ? `${result.returnMissingCount} 路未检测到恢复` : "数据质量正常"}`;
   }
   $("turn-instruction").textContent = !turnEnabled
     ? "连接鞋子后点击开始，并让鞋静止约 0.4 秒完成陀螺仪偏置标定。"
-    : "检测已启动；重新标定会重置两鞋周期和静止偏置，固定 LM 直行模板不会改变。";
+    : "检测已启动；IMU 步速代理会逐周期选择 2–4 km/h 的 LM 直行模板。重新标定只重置周期和陀螺仪静止偏置。";
 }
 
 $("turn-calibrate").onclick = () => {
