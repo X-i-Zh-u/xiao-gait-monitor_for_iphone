@@ -14,6 +14,8 @@ const $ = id => document.getElementById(id);
 let receiveOriginMs = null;
 const trajectories = [GaitTrajectory.create(), GaitTrajectory.create()];
 let trajectorySide = 0;
+const turnDetectors = [GaitLMTurn.create(0), GaitLMTurn.create(1)];
+let turnEnabled = false;
 
 function newShoe(side) {
   return {
@@ -134,6 +136,8 @@ function refreshControls() {
   });
   $("record-start").disabled = recorder.active || !shoes.some(shoe => shoe.status === "streaming");
   $("record-stop").disabled = !recorder.active;
+  $("turn-calibrate").disabled = !shoes.some(shoe => shoe.status === "streaming");
+  $("turn-calibrate").textContent = turnEnabled ? "重新标定转弯检测" : "开始转弯检测";
   refreshHeaderStatus();
 }
 
@@ -220,6 +224,7 @@ function disconnected(shoe) {
   shoe.characteristic = null;
   shoe.connectedAtMs = null;
   shoe.status = "disconnected";
+  if (turnEnabled) turnDetectors[shoe.side].reset();
   refreshControls();
   refreshShoe(shoe);
   if (!shoe.manualDisconnect) {
@@ -253,6 +258,7 @@ async function disconnectShoe(side) {
   shoe.characteristic = null;
   shoe.connectedAtMs = null;
   shoe.status = "disconnected";
+  if (turnEnabled) turnDetectors[side].reset();
   shoe.error = "";
   refreshControls();
   refreshShoe(shoe);
@@ -309,6 +315,16 @@ function receiveNotification(shoe, event) {
     const trajectory = trajectories[shoe.side];
     trajectory.stepLength = Math.max(0.2, Math.min(1.5, Number($("step-length").value || 65) / 100));
     GaitTrajectory.process(trajectory, sample, trajectory.active);
+    if (turnEnabled) {
+      const detector = turnDetectors[shoe.side];
+      try {
+        const result = detector.process(sample);
+        if (result) detector.resultAtMs = receivedPerformanceMs;
+      } catch (error) {
+        detector.invalidate(`算法异常：${error.message || error}`);
+        detector.resultAtMs = receivedPerformanceMs;
+      }
+    }
     shoe.history.push(sample);
     if (shoe.history.length > historyLimit) shoe.history.shift();
     shoe.receivedCount += 1;
@@ -443,8 +459,45 @@ function render() {
     groups.forEach(group => drawPlot(shoe, group));
   });
   drawTrajectory();
+  drawTurn();
   updateRecordingUi();
 }
+
+function drawTurn() {
+  const labels = {
+    TURN: "转弯", STRAIGHT_CANDIDATE: "直行候选", UNCERTAIN: "不确定", INVALID: "数据无效",
+  };
+  for (let side = 0; side < 2; side += 1) {
+    const detector = turnDetectors[side], shoe = shoes[side], result = detector.latest;
+    const live = shoe.status === "streaming" && shoe.lastReceivedMs !== null && performance.now() - shoe.lastReceivedMs < 1500;
+    const stale = detector.resultAtMs !== null && performance.now() - detector.resultAtMs > 3000;
+    const ready = turnEnabled && detector.gyroBias !== null;
+    const state = !turnEnabled ? "尚未开始" : !live ? "等待数据" : !ready ? "静止标定中" : stale ? "等待新周期" : labels[result.state];
+    const badge = $("turn-state-" + side);
+    badge.textContent = state;
+    badge.className = "turn-badge" + (turnEnabled && live && ready && !stale ? ` ${result.state.toLowerCase()}` : "");
+    const showResult = turnEnabled && live && ready && !stale && result.score !== null;
+    $("turn-score-" + side).textContent = showResult ? `${result.score.toFixed(2)}%` : "—";
+    $("turn-onset-" + side).textContent = showResult ? `${result.onsetScore.toFixed(2)}%` : "—";
+    $("turn-peak-" + side).textContent = showResult ? `${result.peakScore.toFixed(2)}%` : "—";
+    $("turn-channels-" + side).textContent = turnEnabled && live && ready && !stale && result.validChannels !== null ? `${result.validChannels}/4` : "—";
+    $("turn-cycles-" + side).textContent = String(detector.cycleCount);
+    $("turn-detail-" + side).textContent = !turnEnabled ? "点击按钮开始检测" : !live ? "连接并接收该鞋数据后继续" : !ready
+      ? "请保持这只鞋静止约 0.4 秒" : stale ? "尚无近期完整周期；继续行走" : result.reason ||
+      `候选周期 ${result.duration.toFixed(2)} 秒；${result.returnMissingCount ? `${result.returnMissingCount} 路未检测到恢复` : "四路恢复状态正常"}`;
+  }
+  $("turn-instruction").textContent = !turnEnabled
+    ? "连接鞋子后点击开始，并让鞋静止约 0.4 秒完成陀螺仪偏置标定。"
+    : "检测已启动；重新标定会重置两鞋周期和静止偏置，固定 LM 直行模板不会改变。";
+}
+
+$("turn-calibrate").onclick = () => {
+  turnDetectors.forEach(detector => detector.reset());
+  turnEnabled = true;
+  notice("转弯检测已启动。请让左右鞋静止约 0.4 秒，再开始行走；未连接的鞋会在收到数据后标定。 ");
+  refreshControls();
+  drawTurn();
+};
 
 function drawTrajectory() {
   const state = trajectories[trajectorySide], canvas = $("trajectory-canvas");
