@@ -15,6 +15,7 @@ let receiveOriginMs = null;
 const trajectories = [GaitTrajectory.create(), GaitTrajectory.create()];
 let trajectorySide = 0;
 const turnDetectors = [GaitLMTurn.create(0), GaitLMTurn.create(1)];
+const bilateralTurn = GaitLMBilateralTurn.create();
 let turnEnabled = false;
 
 function newShoe(side) {
@@ -225,6 +226,7 @@ function disconnected(shoe) {
   shoe.connectedAtMs = null;
   shoe.status = "disconnected";
   if (turnEnabled) turnDetectors[shoe.side].reset();
+  bilateralTurn.invalidate(shoe.side, "鞋子已断开");
   refreshControls();
   refreshShoe(shoe);
   if (!shoe.manualDisconnect) {
@@ -259,6 +261,7 @@ async function disconnectShoe(side) {
   shoe.connectedAtMs = null;
   shoe.status = "disconnected";
   if (turnEnabled) turnDetectors[side].reset();
+  bilateralTurn.invalidate(side, "鞋子已断开");
   shoe.error = "";
   refreshControls();
   refreshShoe(shoe);
@@ -281,6 +284,7 @@ function receiveNotification(shoe, event) {
   } catch (error) {
     shoe.status = "error";
     shoe.error = error.message;
+    bilateralTurn.invalidate(shoe.side, "通知数据无效");
     refreshControls();
     refreshShoe(shoe);
     return;
@@ -319,12 +323,20 @@ function receiveNotification(shoe, event) {
       const detector = turnDetectors[shoe.side];
       try {
         const result = detector.process(sample);
-        if (result) detector.resultAtMs = receivedPerformanceMs;
+        if (result) {
+          detector.resultAtMs = receivedPerformanceMs;
+          if (result.end === null) bilateralTurn.invalidate(shoe.side, result.reason || "周期无效");
+          else bilateralTurn.process(shoe.side, result, Math.max(receivedS, sample.plot_s));
+        }
       } catch (error) {
         detector.invalidate(`算法异常：${error.message || error}`);
         detector.resultAtMs = receivedPerformanceMs;
+        bilateralTurn.invalidate(shoe.side, "转弯算法异常");
       }
     }
+    sample.bilateral_turn = turnEnabled
+      ? bilateralTurn.snapshot(Math.max(receivedS, sample.plot_s))
+      : {state: "DISABLED", source: "NONE", direction: "UNKNOWN"};
     shoe.history.push(sample);
     if (shoe.history.length > historyLimit) shoe.history.shift();
     shoe.receivedCount += 1;
@@ -470,6 +482,7 @@ function drawTurn() {
   for (let side = 0; side < 2; side += 1) {
     const detector = turnDetectors[side], shoe = shoes[side], result = detector.latest;
     const live = shoe.status === "streaming" && shoe.lastReceivedMs !== null && performance.now() - shoe.lastReceivedMs < 1500;
+    if (!live) bilateralTurn.invalidate(side, "等待该鞋新数据");
     const stale = detector.resultAtMs !== null && performance.now() - detector.resultAtMs > 3000;
     const ready = turnEnabled && detector.gyroBias !== null;
     const state = !turnEnabled ? "尚未开始" : !live ? "等待数据" : !ready ? "静止标定中" : stale ? "等待新周期" : labels[result.state];
@@ -493,13 +506,34 @@ function drawTurn() {
       ? "请保持这只鞋静止约 0.4 秒" : stale ? "尚无近期完整周期；继续行走" : result.reason ||
       `候选周期 ${result.duration.toFixed(2)} 秒；模板 ${result.templateSpeedKmh.toFixed(2)} km/h；${qualityWarnings.length ? qualityWarnings.join("；") : result.returnMissingCount ? `${result.returnMissingCount} 路未检测到恢复` : "数据质量正常"}`;
   }
+  const nowS = receiveOriginMs === null ? 0 : (performance.now() - receiveOriginMs) / 1000;
+  const fused = bilateralTurn.snapshot(nowS);
+  const directionNames = {CLOCKWISE: "顺时针", COUNTERCLOCKWISE: "逆时针", UNKNOWN: "方向待定"};
+  const sourceNames = {BILATERAL_MODEL: "双脚融合", LEFT_ONLY: "仅左脚", RIGHT_ONLY: "仅右脚", NONE: "等待周期"};
+  const fusedBadge = $("turn-fused-state");
+  fusedBadge.textContent = !turnEnabled ? "尚未开始" : fused.state === "TURN"
+    ? `转弯 · ${directionNames[fused.direction] || "方向待定"}` : labels[fused.state] || "等待数据";
+  fusedBadge.className = "turn-badge" + (turnEnabled ? ` ${fused.state.toLowerCase()}` : "");
+  $("turn-fused-probability").textContent = turnEnabled && Number.isFinite(fused.turn_probability)
+    ? `${(100 * fused.turn_probability).toFixed(1)}%` : "—";
+  $("turn-fused-source").textContent = turnEnabled ? sourceNames[fused.source] || "等待周期" : "—";
+  $("turn-fused-pairs").textContent = String(fused.paired_cycle_count || 0);
+  $("turn-fused-direction-probability").textContent = turnEnabled && fused.direction !== "UNKNOWN" && Number.isFinite(fused.direction_probability)
+    ? `${(100 * (fused.direction === "COUNTERCLOCKWISE" ? fused.direction_probability : 1 - fused.direction_probability)).toFixed(1)}%` : "—";
+  const reasonNames = {WAITING_FOR_COMPLETED_CYCLE: "等待左右脚完整周期。",
+    SINGLE_FOOT_FALLBACK: "暂用单脚结果；另一只鞋完成有效周期后自动融合。",
+    STALE_OR_MISSING_CYCLE: "等待近期有效周期；旧结果已失效。"};
+  $("turn-fused-detail").textContent = !turnEnabled ? "开始检测后，完成的左右周期会自动配对。" : reasonNames[fused.reason] || fused.reason ||
+    (fused.source === "BILATERAL_MODEL" ? `左右周期重叠 ${(100 * fused.overlap_fraction).toFixed(0)}%；数据不足或方向概率接近时显示待定。`
+      : "暂用单脚结果；另一只鞋完成有效周期后自动融合。");
   $("turn-instruction").textContent = !turnEnabled
     ? "连接鞋子后点击开始，并让鞋静止约 0.4 秒完成陀螺仪偏置标定。"
-    : "检测已启动；IMU 步速代理会逐周期选择 2–4 km/h 的 LM 直行模板。重新标定只重置周期和陀螺仪静止偏置。";
+    : "检测已启动；按 IMU 步速选择直行模板，左右完整周期到达后更新综合判定。";
 }
 
 $("turn-calibrate").onclick = () => {
   turnDetectors.forEach(detector => detector.reset());
+  bilateralTurn.reset();
   turnEnabled = true;
   notice("转弯检测已启动。请让左右鞋静止约 0.4 秒，再开始行走；未连接的鞋会在收到数据后标定。 ");
   refreshControls();
@@ -602,11 +636,14 @@ class CsvRecorder {
 
   record(sample) {
     if (!this.active) return;
+    const turn = sample.bilateral_turn || {};
     const row = [
       this.session, sample.side === 0 ? "L" : "R", sample.frame, sample.received_time_iso,
       sample.received_unix_ns, sample.received_monotonic_ns, sample.received_s, sample.plot_s,
       sample.adc_us, sample.imu_us, sample.battery_mv ?? "", sample.battery_percent ?? "",
       ...sample.voltage, ...sample.acceleration, ...sample.angular_rate,
+      turn.state ?? "", turn.turn_probability ?? "", turn.source ?? "",
+      turn.direction ?? "", turn.direction_probability ?? "", turn.paired_cycle_count ?? "",
     ].join(",") + "\n";
     this.pending.push(row);
     this.rows += 1;
@@ -651,7 +688,7 @@ class CsvRecorder {
       request.onsuccess = () => resolve(request.result.sort((a, b) => a.index - b.index));
       request.onerror = () => reject(request.error || new Error("读取记录失败"));
     });
-    const header = "session,shoe,frame,received_time_iso,received_unix_ns,received_monotonic_ns,received_s,plot_s,adc_us,imu_us,battery_mv,battery_percent,voltage_0,voltage_1,voltage_2,voltage_3,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n";
+    const header = "session,shoe,frame,received_time_iso,received_unix_ns,received_monotonic_ns,received_s,plot_s,adc_us,imu_us,battery_mv,battery_percent,voltage_0,voltage_1,voltage_2,voltage_3,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,turn_state,turn_probability,turn_source,turn_direction,direction_probability,paired_cycle_count\n";
     const parts = ["\ufeff", header, ...chunks.map(chunk => chunk.text)];
     const fileName = this.session + ".csv";
     const blob = new Blob(parts, {type: "text/csv;charset=utf-8"});

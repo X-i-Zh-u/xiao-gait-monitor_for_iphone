@@ -255,6 +255,7 @@ button:disabled { opacity: .42; cursor: default; }
 .turn-metrics span { color: var(--muted); font-size: 11px; }
 .turn-metrics b { color: var(--ink); font-family: var(--mono); }
 .turn-card > small { display: block; margin-top: 10px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.turn-fused-card { margin-top: 12px; background: #f3f7f6; border-color: #a9c9bb; }
 .trajectory-panel { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .trajectory-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .trajectory-heading h2 { font-size: 17px; margin: 3px 0 0; }

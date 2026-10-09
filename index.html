@@ -89,11 +89,12 @@
         <button id="turn-calibrate" disabled>开始转弯检测</button>
       </div>
       <p class="turn-instruction" id="turn-instruction">连接鞋子后，点击开始；请让鞋静止约 0.4 秒完成标定。</p>
+      <article class="turn-card turn-fused-card"><div class="turn-card-top"><strong>双脚综合判定</strong><span class="turn-badge" id="turn-fused-state">尚未开始</span></div><div class="turn-metrics"><span>转弯概率 <b id="turn-fused-probability">—</b></span><span>判定来源 <b id="turn-fused-source">—</b></span><span>方向概率 <b id="turn-fused-direction-probability">—</b></span><span>配对周期 <b id="turn-fused-pairs">0</b></span></div><small id="turn-fused-detail">开始检测后，完成的左右周期会自动配对。</small></article>
       <div class="turn-grid">
         <article class="turn-card" id="turn-card-0"><div class="turn-card-top"><strong>左鞋 · GAIT-L</strong><span class="turn-badge" id="turn-state-0">尚未开始</span></div><div class="turn-metrics"><span>转弯概率 <b id="turn-probability-0">—</b></span><span>IMU 步速代理 <b id="turn-speed-0">—</b></span><span>LM 得分 <b id="turn-score-0">—</b></span><span>开始差 <b id="turn-onset-0">—</b></span><span>峰值差 <b id="turn-peak-0">—</b></span><span>有效通道 <b id="turn-channels-0">—</b></span><span>周期 <b id="turn-cycles-0">0</b></span></div><small id="turn-detail-0">等待开始</small></article>
         <article class="turn-card" id="turn-card-1"><div class="turn-card-top"><strong>右鞋 · GAIT-R</strong><span class="turn-badge" id="turn-state-1">尚未开始</span></div><div class="turn-metrics"><span>转弯概率 <b id="turn-probability-1">—</b></span><span>IMU 步速代理 <b id="turn-speed-1">—</b></span><span>LM 得分 <b id="turn-score-1">—</b></span><span>开始差 <b id="turn-onset-1">—</b></span><span>峰值差 <b id="turn-peak-1">—</b></span><span>有效通道 <b id="turn-channels-1">—</b></span><span>周期 <b id="turn-cycles-1">0</b></span></div><small id="turn-detail-1">等待开始</small></article>
       </div>
-      <p class="turn-note">按完整候选周期更新。IMU 只估计步速代理，用于在 2 与 4 km/h 直行模板之间插值；最终概率来自 LM 四通道形变开始与峰值相位差。概率 ≥ 60% 显示转弯，≤ 40% 显示直行候选，中间为不确定。当前模型不判断左转或右转，也未覆盖坡道、楼梯、跨受试者和重新佩戴。</p>
+      <p class="turn-note">按完整候选周期更新；双脚融合使用 LM 形变时序、左右差异、IMU 步速代理及周期时间。概率 ≥ 60% 显示转弯，≤ 40% 显示直行候选，中间显示不确定。转弯方向由独立的双脚方向模型判断，证据不足时显示方向待定。缺少一侧有效数据时退回单脚判定。当前模型来自同一受试者、同次佩戴实验。</p>
     </section>
 
     <section class="trajectory-panel" aria-label="二维步行轨迹">
@@ -122,8 +123,9 @@
 
   <script src="./protocol.js?v=4"></script>
   <script src="./trajectory.js?v=1"></script>
-  <script src="./lm_turn_model.js?v=db19841c0c5e"></script>
+  <script src="./lm_turn_model.js?v=5acf3f4faff2"></script>
   <script src="./lm_turn_speed.js?v=1"></script>
-  <script src="./app.js?v=7"></script>
+  <script src="./lm_turn_bilateral.js?v=1"></script>
+  <script src="./app.js?v=8"></script>
 </body>
 </html>
